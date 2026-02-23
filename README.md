@@ -1,390 +1,304 @@
-# 🦠 COVID-19 Prediction - Epidemiological Forecasting
+# 🦠 COVID-19 Prediction - Time Series & Forecasting
 
-A **machine learning model for COVID-19 case prediction** using time-series analysis and epidemiological features to forecast infection trends, helping healthcare systems prepare resources and implement preventive measures.
+A **machine learning system** for predicting COVID-19 cases, deaths, and trends using time series analysis and epidemiological models.
 
 ## 🎯 Overview
 
-This project provides:
-- ✅ Time-series forecasting (LSTM, ARIMA)
-- ✅ Epidemiological modeling (SIR, SEIR)
-- ✅ Feature engineering from medical data
-- ✅ Multi-step ahead predictions
+This project covers:
+- ✅ Time series forecasting
+- ✅ ARIMA/SARIMA models
+- ✅ Trend analysis
+- ✅ Epidemiological models
+- ✅ Region-specific predictions
 - ✅ Uncertainty quantification
-- ✅ Validation against real-world data
+- ✅ Public health insights
 
-## 📊 Data Features
-
-```
-Temporal Features:
-├── Daily confirmed cases
-├── Daily deaths
-├── Daily recoveries
-├── Test positive rate
-└── Hospitalization rate
-
-Geographic Features:
-├── Population density
-├── Healthcare capacity
-├── Mobility patterns
-└── Climate/Weather data
-
-Behavioral Features:
-├── Vaccination rate
-├── Mask compliance
-├── Social distancing index
-└── Travel patterns
-```
-
-## 🔬 Epidemiological Models
-
-### SIR Model (Susceptible-Infected-Recovered)
+## 📈 COVID-19 Data Analysis
 
 ```python
+import pandas as pd
 import numpy as np
-from scipy.integrate import odeint
-import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
-class SIRModel:
-    """Basic SIR epidemiological model"""
+class CovidDataAnalyzer:
+    """Analyze COVID-19 data"""
     
-    def __init__(self, population, beta, gamma):
-        """
-        Parameters:
-        - population: Total population
-        - beta: Transmission rate
-        - gamma: Recovery rate
-        """
-        self.N = population
-        self.beta = beta
-        self.gamma = gamma
+    def __init__(self):
+        self.data = None
     
-    def differential(self, y, t):
-        """SIR differential equations"""
-        S, I, R = y
+    def load_covid_data(self, filepath):
+        """Load COVID dataset"""
+        self.data = pd.read_csv(filepath)
+        self.data['date'] = pd.to_datetime(self.data['date'])
+        self.data = self.data.sort_values('date')
         
-        dS_dt = -self.beta * S * I / self.N
-        dI_dt = self.beta * S * I / self.N - self.gamma * I
-        dR_dt = self.gamma * I
-        
-        return [dS_dt, dI_dt, dR_dt]
+        return self.data
     
-    def simulate(self, initial_infections, days):
-        """Simulate disease progression"""
-        S0 = self.N - initial_infections
-        I0 = initial_infections
-        R0 = 0
+    def calculate_daily_metrics(self):
+        """Calculate daily cases/deaths"""
+        df = self.data.copy()
         
-        y0 = [S0, I0, R0]
-        t = np.linspace(0, days, days)
+        df['daily_cases'] = df['confirmed'].diff()
+        df['daily_deaths'] = df['deaths'].diff()
+        df['daily_recovered'] = df['recovered'].diff()
         
-        solution = odeint(self.differential, y0, t)
+        # 7-day rolling average (smoothing)
+        df['cases_7day_avg'] = df['daily_cases'].rolling(7).mean()
+        df['deaths_7day_avg'] = df['daily_deaths'].rolling(7).mean()
         
-        return {
-            'Susceptible': solution[:, 0],
-            'Infected': solution[:, 1],
-            'Recovered': solution[:, 2],
-            'time': t
-        }
-
-# Example
-sir = SIRModel(population=1_000_000, beta=0.3, gamma=0.1)
-results = sir.simulate(initial_infections=100, days=365)
-```
-
-### SEIR Model (Susceptible-Exposed-Infected-Recovered)
-
-```python
-class SEIRModel:
-    """SEIR model with incubation period"""
+        return df
     
-    def __init__(self, population, beta, sigma, gamma):
-        """
-        sigma: Rate of progression from exposed to infected
-        """
-        self.N = population
-        self.beta = beta
-        self.sigma = sigma
-        self.gamma = gamma
+    def calculate_growth_rate(self):
+        """Calculate growth rates"""
+        df = self.data.copy()
+        
+        # Daily growth rate
+        df['case_growth_rate'] = df['confirmed'].pct_change() * 100
+        df['death_growth_rate'] = df['deaths'].pct_change() * 100
+        
+        # 7-day growth average
+        df['growth_rate_7day'] = df['case_growth_rate'].rolling(7).mean()
+        
+        return df
     
-    def differential(self, y, t):
-        """SEIR differential equations"""
-        S, E, I, R = y
+    def analyze_regional_trends(self):
+        """Compare regions"""
+        df = self.data.copy()
         
-        dS_dt = -self.beta * S * I / self.N
-        dE_dt = self.beta * S * I / self.N - self.sigma * E
-        dI_dt = self.sigma * E - self.gamma * I
-        dR_dt = self.gamma * I
-        
-        return [dS_dt, dE_dt, dI_dt, dR_dt]
-```
-
-## 🤖 ML Forecasting Models
-
-### LSTM for Time-Series
-
-```python
-import tensorflow as tf
-from tensorflow import keras
-
-class LSTMForecast:
-    """LSTM model for COVID-19 case forecasting"""
-    
-    def __init__(self, sequence_length=30):
-        self.sequence_length = sequence_length
-        self.model = self._build_model()
-    
-    def _build_model(self):
-        """Build LSTM architecture"""
-        model = keras.Sequential([
-            keras.layers.LSTM(
-                64,
-                activation='relu',
-                input_shape=(self.sequence_length, 1),
-                return_sequences=True
-            ),
-            keras.layers.Dropout(0.2),
-            keras.layers.LSTM(32, activation='relu'),
-            keras.layers.Dropout(0.2),
-            keras.layers.Dense(16, activation='relu'),
-            keras.layers.Dense(7)  # 7-day forecast
-        ])
-        
-        model.compile(
-            optimizer='adam',
-            loss='mse',
-            metrics=['mae']
-        )
-        
-        return model
-    
-    def prepare_sequences(self, data):
-        """Prepare sequences for LSTM input"""
-        X, y = [], []
-        
-        for i in range(len(data) - self.sequence_length - 7):
-            X.append(data[i:i+self.sequence_length])
-            y.append(data[i+self.sequence_length:i+self.sequence_length+7])
-        
-        return np.array(X), np.array(y)
-    
-    def forecast(self, historical_data, steps=7):
-        """Forecast next N days"""
-        sequence = historical_data[-self.sequence_length:].reshape(1, -1, 1)
-        forecasts = []
-        
-        for _ in range(steps):
-            pred = self.model.predict(sequence, verbose=0)[0]
-            forecasts.append(pred[0])
+        if 'region' in df.columns:
+            regional_stats = df.groupby('region').agg({
+                'confirmed': 'max',
+                'deaths': 'max',
+                'recovered': 'max'
+            })
             
-            # Update sequence
-            sequence = np.append(sequence[0][1:], pred[0])
-            sequence = sequence.reshape(1, -1, 1)
+            regional_stats['fatality_rate'] = (
+                regional_stats['deaths'] / regional_stats['confirmed'] * 100
+            )
+            
+            return regional_stats
+    
+    def calculate_reproduction_number(self, window=7):
+        """Estimate R-value approximation"""
+        df = self.data.copy()
         
-        return np.array(forecasts)
+        df['cases_shift'] = df['daily_cases'].shift(window)
+        df['reproduction_proxy'] = df['daily_cases'] / (df['cases_shift'] + 1)
+        
+        return df
 ```
 
-### ARIMA for Time-Series
+## 🔮 ARIMA Time Series Models
 
 ```python
 from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.stattools import adfuller
 
-class ARIMAForecast:
-    """ARIMA model for COVID-19 predictions"""
+class CovidTimeSeriesPredictor:
+    """Time series forecasting"""
     
-    def __init__(self, order=(5, 1, 2)):
-        """
-        order = (p, d, q)
-        p: AR order
-        d: Differencing
-        q: MA order
-        """
-        self.order = order
-        self.model = None
+    def __init__(self):
+        self.arima_model = None
+        self.sarima_model = None
     
-    def fit(self, data):
-        """Fit ARIMA model to historical data"""
-        self.model = ARIMA(data, order=self.order)
-        self.results = self.model.fit()
-    
-    def forecast(self, steps=7):
-        """Forecast next N steps"""
-        forecast = self.results.get_forecast(steps=steps)
-        return forecast.conf_int()
-    
-    @staticmethod
-    def find_best_order(data, p_range=range(6), d_range=range(3), q_range=range(3)):
-        """Grid search for best ARIMA parameters"""
-        best_aic = np.inf
-        best_order = (0, 0, 0)
+    def stationarity_test(self, data):
+        """Augmented Dickey-Fuller test"""
+        result = adfuller(data.dropna())
         
-        for p in p_range:
-            for d in d_range:
-                for q in q_range:
-                    try:
-                        model = ARIMA(data, order=(p, d, q))
-                        results = model.fit()
-                        
-                        if results.aic < best_aic:
-                            best_aic = results.aic
-                            best_order = (p, d, q)
-                    except:
-                        pass
+        return {
+            'adf_statistic': result[0],
+            'p_value': result[1],
+            'is_stationary': result[1] < 0.05
+        }
+    
+    def plot_acf_pacf(self, data):
+        """Plot autocorrelation"""
+        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
         
-        return best_order
+        plot_acf(data, lags=40, ax=axes[0])
+        plot_pacf(data, lags=40, ax=axes[1])
+        
+        plt.show()
+    
+    def fit_arima(self, data, order=(1, 1, 1)):
+        """Fit ARIMA model"""
+        self.arima_model = ARIMA(data, order=order)
+        results = self.arima_model.fit()
+        
+        return results
+    
+    def fit_sarima(self, data, order=(1, 1, 1), seasonal_order=(1, 1, 1, 7)):
+        """Fit SARIMA (seasonal ARIMA)"""
+        self.sarima_model = SARIMAX(
+            data,
+            order=order,
+            seasonal_order=seasonal_order,
+            enforce_stationarity=False,
+            enforce_invertibility=False
+        )
+        
+        results = self.sarima_model.fit()
+        
+        return results
+    
+    def forecast_cases(self, steps=30):
+        """Forecast future cases"""
+        if self.sarima_model:
+            forecast_result = self.sarima_model.get_forecast(steps=steps)
+            forecast = forecast_result.predicted_mean
+            conf_int = forecast_result.conf_int()
+            
+            return {
+                'forecast': forecast,
+                'lower_ci': conf_int.iloc[:, 0],
+                'upper_ci': conf_int.iloc[:, 1]
+            }
+    
+    def plot_forecast(self, data, forecast_result, title='COVID-19 Cases Forecast'):
+        """Visualize forecast"""
+        plt.figure(figsize=(12, 6))
+        
+        plt.plot(data.index, data, label='Historical Data')
+        plt.plot(forecast_result['forecast'].index, forecast_result['forecast'], 
+                label='Forecast', color='red')
+        plt.fill_between(forecast_result['lower_ci'].index,
+                        forecast_result['lower_ci'],
+                        forecast_result['upper_ci'],
+                        alpha=0.3, color='red', label='Confidence Interval')
+        
+        plt.title(title)
+        plt.xlabel('Date')
+        plt.ylabel('Number of Cases')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 ```
 
-## 📈 Feature Engineering
+## 🧬 Epidemiological Models
 
 ```python
-class CovidFeatureEngineering:
-    """Create features for COVID-19 prediction"""
+class SIRModel:
+    """SIR (Susceptible-Infected-Recovered) model"""
     
-    @staticmethod
-    def create_temporal_features(data):
-        """Extract temporal patterns"""
-        features = {
-            'day_of_week': data.index.dayofweek,
-            'month': data.index.month,
-            'is_weekend': data.index.dayofweek >= 5
+    def __init__(self, population, initial_infected=1):
+        self.N = population  # Total population
+        self.I = initial_infected  # Initial infected
+        self.S = population - initial_infected  # Initially susceptible
+        self.R = 0  # Initially recovered
+    
+    def sir_dynamics(self, beta, gamma, days):
+        """Simulate SIR model"""
+        S, I, R = [self.S], [self.I], [self.R]
+        
+        for day in range(days):
+            # New infections
+            new_infections = (beta * S[-1] * I[-1]) / self.N
+            # New recoveries
+            new_recoveries = gamma * I[-1]
+            
+            # Update compartments
+            S.append(S[-1] - new_infections)
+            I.append(I[-1] + new_infections - new_recoveries)
+            R.append(R[-1] + new_recoveries)
+        
+        return {
+            'susceptible': S,
+            'infected': I,
+            'recovered': R
         }
-        return pd.DataFrame(features, index=data.index)
     
-    @staticmethod
-    def create_rolling_features(cases, windows=[7, 14, 30]):
-        """Create rolling statistics"""
-        features = pd.DataFrame(index=cases.index)
+    def calculate_basic_reproduction(self, beta, gamma):
+        """Calculate R0"""
+        R0 = beta / gamma
         
-        for window in windows:
-            features[f'rolling_mean_{window}'] = cases.rolling(window).mean()
-            features[f'rolling_std_{window}'] = cases.rolling(window).std()
-            features[f'rolling_max_{window}'] = cases.rolling(window).max()
-        
-        return features
+        return R0
     
-    @staticmethod
-    def create_growth_features(cases):
-        """Create growth rate features"""
-        features = pd.DataFrame(index=cases.index)
+    def plot_sir_curves(self, S, I, R):
+        """Visualize SIR model"""
+        plt.figure(figsize=(12, 6))
         
-        # Day-to-day change
-        features['daily_change'] = cases.diff()
+        plt.plot(S, label='Susceptible', color='blue')
+        plt.plot(I, label='Infected', color='red')
+        plt.plot(R, label='Recovered', color='green')
         
-        # Growth rate
-        features['growth_rate'] = cases.pct_change()
-        
-        # 7-day growth
-        features['weekly_growth'] = (
-            cases / cases.shift(7) - 1
-        ) * 100
-        
-        return features
+        plt.title('SIR Model Simulation')
+        plt.xlabel('Days')
+        plt.ylabel('Number of People')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 ```
 
-## 📊 Model Evaluation
+## 📊 Evaluation & Metrics
 
 ```python
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-class CovidEvaluator:
-    """Evaluate forecast accuracy"""
+class CovidMetricsEvaluator:
+    """Evaluate prediction accuracy"""
     
     @staticmethod
-    def evaluate_forecast(actual, predicted):
-        """Calculate error metrics"""
-        mae = mean_absolute_error(actual, predicted)
-        rmse = np.sqrt(mean_squared_error(actual, predicted))
-        mape = np.mean(np.abs((actual - predicted) / actual)) * 100
+    def calculate_forecast_accuracy(y_actual, y_predicted):
+        """Calculate accuracy metrics"""
+        mae = mean_absolute_error(y_actual, y_predicted)
+        rmse = np.sqrt(mean_squared_error(y_actual, y_predicted))
+        mape = np.mean(np.abs((y_actual - y_predicted) / y_actual)) * 100
         
         return {
             'MAE': mae,
             'RMSE': rmse,
-            'MAPE': mape  # Mean Absolute Percentage Error
+            'MAPE': mape
         }
     
     @staticmethod
-    def plot_forecast(actual, predicted, confidence_interval=None):
-        """Visualize forecast vs actual"""
-        plt.figure(figsize=(12, 6))
-        
-        plt.plot(actual, label='Actual Cases', color='blue', linewidth=2)
-        plt.plot(predicted, label='Predicted Cases', color='red', linewidth=2)
-        
-        if confidence_interval is not None:
-            plt.fill_between(
-                range(len(confidence_interval)),
-                confidence_interval[:, 0],
-                confidence_interval[:, 1],
-                alpha=0.2,
-                color='red'
-            )
-        
-        plt.legend()
-        plt.xlabel('Days')
-        plt.ylabel('Cases')
-        plt.title('COVID-19 Case Forecast')
-        plt.show()
-```
-
-## 🏥 Healthcare Resource Planning
-
-```python
-class ResourcePlanning:
-    """Plan healthcare resources based on forecasts"""
+    def calculate_peak_prediction_error(actual_peak, predicted_peak, actual_peak_date, predicted_peak_date):
+        """Error in peak prediction"""
+        return {
+            'peak_value_error': abs(actual_peak - predicted_peak),
+            'peak_date_error_days': abs((actual_peak_date - predicted_peak_date).days)
+        }
     
     @staticmethod
-    def estimate_hospital_beds(forecast_cases, hospitalization_rate=0.05):
-        """Estimate bed requirements"""
-        return forecast_cases * hospitalization_rate
-    
-    @staticmethod
-    def estimate_icu_beds(forecast_cases, icu_rate=0.02):
-        """Estimate ICU bed requirements"""
-        return forecast_cases * icu_rate
-    
-    @staticmethod
-    def estimate_ventilators(forecast_cases, ventilator_rate=0.01):
-        """Estimate ventilator needs"""
-        return forecast_cases * ventilator_rate
-    
-    @staticmethod
-    def staffing_requirements(hospital_beds, staff_per_bed=0.5):
-        """Calculate staff requirements"""
-        return int(hospital_beds * staff_per_bed)
+    def calculate_attack_rate(confirmed, population):
+        """Overall attack rate"""
+        return (confirmed / population) * 100
 ```
 
 ## 💡 Interview Talking Points
 
-**Q: How do SIR and LSTM models differ?**
+**Q: ARIMA vs SARIMA?**
 ```
 Answer:
-- SIR: Mechanistic, based on disease biology
-- LSTM: Data-driven, learns from patterns
-- Hybrid: Combine both for better results
+- ARIMA: AR (autoregressive) + MA (moving average)
+- SARIMA: Adds seasonal component
+- COVID shows strong seasonality
+- SARIMA captures weekly patterns
+- AIC/BIC for model selection
 ```
 
-**Q: How handle uncertainty in predictions?**
+**Q: R0 significance?**
 ```
 Answer:
-- Confidence intervals (ARIMA)
-- Ensemble models
-- Bayesian methods
-- Monte Carlo simulation
+- Basic Reproduction Number
+- Average infections per case
+- R0 > 1: Epidemic grows
+- R0 < 1: Epidemic dies out
+- Guides intervention policy
 ```
 
 ## 🌟 Portfolio Value
 
-✅ Time-series forecasting
+✅ Time series forecasting
+✅ ARIMA/SARIMA models
 ✅ Epidemiological modeling
-✅ Deep learning (LSTM)
-✅ Statistical models (ARIMA)
-✅ Public health applications
+✅ Public health data
 ✅ Uncertainty quantification
-
-## 📄 License
-
-MIT License - Educational Use
+✅ Trend analysis
+✅ Real-world pandemic data
 
 ---
 
-**Technologies**: TensorFlow, Statsmodels, SciPy, NumPy
+**Technologies**: Statsmodels, Pandas, NumPy, Scikit-learn
 
